@@ -53,8 +53,17 @@ def parse_command_line():
 def is_supported_daisy_book(path):
     has_ncc = os.path.exists(os.path.join(path, NCC_FILENAME)) or os.path.exists(os.path.join(path, NCC_FILENAME.lower()))
     smil_files = glob.iglob(os.path.join(path, SMIL_GLOB))
-    has_smils = len(list(filter(lambda smil: smil != MASTER_SMIL_FILENAME and smil != MASTER_SMIL_FILENAME.lower(), smil_files))) > 1
+    has_smils = len(list(filter(lambda smil: smil != MASTER_SMIL_FILENAME and smil != MASTER_SMIL_FILENAME.lower(), smil_files))) >= 1
     return has_ncc and has_smils
+
+
+def make_safe_filename(filename):
+    # strip out any disallowed chars and replace with underscores
+    disallowed_ascii = [chr(i) for i in range(0, 32)]
+    disallowed_chars = '<>:"/\\|?*^{0}'.format(''.join(disallowed_ascii))
+    translator = dict((ord(char), '_') for char in disallowed_chars)
+    safe_filename = filename.replace(': ', ' - ').translate(translator).rstrip('. ')
+    return safe_filename
 
 
 if __name__ == '__main__':
