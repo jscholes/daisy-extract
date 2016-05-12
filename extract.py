@@ -3,9 +3,8 @@
 # This program is free software, licensed under the terms of the GNU General Public License (version 3 or later).
 # See the file LICENSE for more details.
 
-from __future__ import print_function
 import argparse
-from glob import iglob
+import glob
 import logging
 import os
 import sys
@@ -23,6 +22,8 @@ log_stream.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 logger.addHandler(log_stream)
 
 NCC_FILENAME = 'NCC.HTML'
+MASTER_SMIL_FILENAME = 'MASTER.SMIL'
+SMIL_GLOB = '*.[sS][mM][iI][lL]'
 
 
 def main():
@@ -50,7 +51,10 @@ def parse_command_line():
 
 
 def is_supported_daisy_book(path):
-    return os.path.exists(os.path.join(path, NCC_FILENAME)) or os.path.exists(os.path.join(path, NCC_FILENAME.lower()))
+    has_ncc = os.path.exists(os.path.join(path, NCC_FILENAME)) or os.path.exists(os.path.join(path, NCC_FILENAME.lower()))
+    smil_files = glob.iglob(os.path.join(path, SMIL_GLOB))
+    has_smils = len(list(filter(lambda smil: smil != MASTER_SMIL_FILENAME and smil != MASTER_SMIL_FILENAME.lower(), smil_files))) > 1
+    return has_ncc and has_smils
 
 
 if __name__ == '__main__':
