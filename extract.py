@@ -9,9 +9,9 @@ import glob
 import logging
 import os
 import sys
-from xml.etree import ElementTree
 
 from bs4 import BeautifulSoup
+from natsort import natsorted
 
 
 __version__ = '0.1'
@@ -59,7 +59,32 @@ def main():
         logger.error(str(e))
         sys.exit(1)
 
+    output_directory = os.path.join(output_directory, make_safe_filename(metadata.authors), make_safe_filename(metadata.title))
     logger.info('Extracting content of book: {0} by {1} from {2} to {3}'.format(metadata.title, metadata.authors, input_directory, output_directory))
+
+    audio_files = []
+    for file in smil_files:
+        smil = parse_smil_file(file)
+        try:
+            section_title = get_title_from_smil(smil)
+            logger.debug('Found SMIL section: {0}'.format(section_title))
+        except DaisyExtractError:
+            logger.error('Could not retrieve SMIL metadata from: {0}'.format(file))
+            sys.exit(1)
+
+        section_audio_files = get_audio_filenames_from_smil(smil)
+        section_audio_files = set(section_audio_files)
+        logger.debug('SMIL section spans {0} audio file(s)'.format(len(section_audio_files)))
+
+        for audio_file in section_audio_files:
+            audio_files.append((section_title, os.path.join(input_directory, audio_file)))
+
+    logger.info('Copying {0} audio files'.format(len(audio_files)))
+    try:
+        os.makedirs(output_directory)
+        logger.debug('Created directory: {0}'.format(output_directory))
+    except (FileExistsError, PermissionError):
+        pass
 
 
 def parse_command_line():
@@ -84,18 +109,18 @@ def get_ncc_path(directory):
 
 
 def get_smil_filenames(directory):
-    smil_files = list(filter(lambda smil: smil != MASTER_SMIL_FILENAME and smil != MASTER_SMIL_FILENAME.lower(), glob.iglob(os.path.join(directory, SMIL_GLOB))))
+    smil_files = list(filter(lambda smil: not smil.upper().endswith(MASTER_SMIL_FILENAME), glob.iglob(os.path.join(directory, SMIL_GLOB))))
     number_of_smil_files = len(smil_files)
     if number_of_smil_files >= 1:
         logger.debug('Found {0} SMIL files in directory'.format(number_of_smil_files))
-        return smil_files
+        return natsorted(smil_files)
     else:
         logger.debug('No SMIL files found in directory')
         raise DaisyExtractError('No SMIL files found')
 
 
 def get_metadata_from_ncc(ncc_path):
-    with open(ncc_path, 'r') as f:
+    with open(ncc_path, 'r', encoding='UTF-8') as f:
         ncc = BeautifulSoup(f, HTML_PARSER)
 
     title_tag = ncc.find('meta', attrs={'name': 'dc:title'})
@@ -113,6 +138,26 @@ def get_metadata_from_ncc(ncc_path):
     logger.debug('{0} author(s) listed in DAISY book metadata: {1}'.format(len(creator_tags), authors))
 
     return BookMetadata(authors, title)
+
+
+def parse_smil_file(path):
+    logger.debug('Parsing SMIL: {0}'.format(os.path.split(path)[-1]))
+    with open(path, 'r', encoding='UTF-8') as f:
+        return BeautifulSoup(f, HTML_PARSER)
+
+
+def get_title_from_smil(smil):
+    title_tag = smil.find('meta', attrs={'name': 'title'})
+    if title_tag is None:
+        raise DaisyExtractError('Unable to extract title from SMIL')
+    title = title_tag.attrs.get('content')
+    if not title:
+        raise DaisyExtractError('SMIL section has no title')
+    return title
+
+
+def get_audio_filenames_from_smil(smil):
+    return (audio.attrs.get('src') for audio in smil.find_all('audio'))
 
 
 def make_safe_filename(filename):
