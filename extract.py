@@ -22,6 +22,7 @@ log_stream = logging.StreamHandler(sys.stdout)
 log_stream.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 logger.addHandler(log_stream)
 
+HTML_PARSER = 'html.parser'
 NCC_FILENAME = 'NCC.HTML'
 MASTER_SMIL_FILENAME = 'MASTER.SMIL'
 SMIL_GLOB = '*.[sS][mM][iI][lL]'
@@ -52,7 +53,13 @@ def main():
         logger.error('The contents of {0} don\'t seem to be a valid DAISY 2.02 book.'.format(input_directory))
         sys.exit(1)
 
-    logger.info('Extracting content from {0} to {1}'.format(input_directory, output_directory))
+    try:
+        metadata = get_metadata_from_ncc(ncc_path)
+    except DaisyExtractError as e:
+        logger.error(str(e))
+        sys.exit(1)
+
+    logger.info('Extracting content of book: {0} by {1} from {2} to {3}'.format(metadata.title, metadata.authors, input_directory, output_directory))
 
 
 def parse_command_line():
@@ -85,6 +92,27 @@ def get_smil_filenames(directory):
     else:
         logger.debug('No SMIL files found in directory')
         raise DaisyExtractError('No SMIL files found')
+
+
+def get_metadata_from_ncc(ncc_path):
+    with open(ncc_path, 'r') as f:
+        ncc = BeautifulSoup(f, HTML_PARSER)
+
+    title_tag = ncc.find('meta', attrs={'name': 'dc:title'})
+    if title_tag is None:
+        raise DaisyExtractError('The title of the DAISY book could not be found')
+    title = title_tag.attrs.get('content')
+    if not title:
+        raise DaisyExtractError('The title of the DAISY book is blank')
+    logger.debug('DAISY book title: {0}'.format(title))
+
+    creator_tags = ncc.find_all('meta', attrs={'name': 'dc:creator'})
+    if not creator_tags:
+        raise DaisyExtractError('No authors are listed in the DAISY book')
+    authors = ', '.join([tag.attrs.get('content') for tag in creator_tags])
+    logger.debug('{0} author(s) listed in DAISY book metadata: {1}'.format(len(creator_tags), authors))
+
+    return BookMetadata(authors, title)
 
 
 def make_safe_filename(filename):
